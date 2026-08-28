@@ -1,0 +1,9 @@
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+export default defineConfig({
+  root: "github-pages",
+  base: "/aventura21/",
+  plugins: [react()],
+  build: { outDir: "../dist-github", emptyOutDir: true },
+});
