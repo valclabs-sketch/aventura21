@@ -1,0 +1,59 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+type AvatarId = "luna" | "nube" | "milo";
+type Game = { name:string; avatar:AvatarId; day:number; stars:number; screen:"welcome"|"story"|"map"; story:number; rewards:string[]; started:string|null };
+const AVATARS = { luna:{emoji:"🦊",name:"Luna",color:"coral"}, nube:{emoji:"🐼",name:"Nube",color:"blue"}, milo:{emoji:"🐯",name:"Milo",color:"yellow"} } as const;
+const VALUES = [
+  {name:"Respeto", icon:"🤝", text:"Tratar con cariño a los demás, escuchar y cuidar lo que nos rodea."},
+  {name:"Responsabilidad", icon:"🌱", text:"Cumplir nuestros compromisos, incluso cuando nadie nos está mirando."},
+  {name:"Proactividad", icon:"🚀", text:"Dar el primer paso y hacer lo que podemos sin esperar que nos lo pidan."},
+  {name:"Valentía", icon:"🦁", text:"Intentarlo con amor aunque algo parezca difícil."},
+  {name:"Fortaleza", icon:"💪", text:"Seguir adelante con paciencia y aprender de cada intento."},
+];
+const PRIZES = ["Salir a comer un helado 🍦","Escoger la película del domingo 🎬","Salir al parque 🌳","Salir a la piscina 🏊","Salir a montar patines 🛼"];
+const initial:Game = {name:"",avatar:"luna",day:1,stars:0,screen:"welcome",story:0,rewards:[],started:null};
+
+function colombiaDate(){return new Intl.DateTimeFormat("en-CA",{timeZone:"America/Bogota",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date())}
+function colombiaWeekday(){return new Intl.DateTimeFormat("es-CO",{timeZone:"America/Bogota",weekday:"long"}).format(new Date())}
+function sound(kind:"win"|"lose"|"prize") { try { const Ctx=window.AudioContext||(window as typeof window & {webkitAudioContext:typeof AudioContext}).webkitAudioContext; const c=new Ctx(); const notes=kind==="win"?[523,659,784]:kind==="prize"?[523,659,784,1046]:[330,277,220]; notes.forEach((n,i)=>{const o=c.createOscillator(),g=c.createGain();o.type=kind==="lose"?"triangle":"sine";o.frequency.value=n;g.gain.setValueAtTime(.0001,c.currentTime+i*.13);g.gain.exponentialRampToValueAtTime(.15,c.currentTime+i*.13+.02);g.gain.exponentialRampToValueAtTime(.0001,c.currentTime+i*.13+.18);o.connect(g).connect(c.destination);o.start(c.currentTime+i*.13);o.stop(c.currentTime+i*.13+.2)});}catch{} }
+
+export default function Home(){
+  const [game,setGame]=useState<Game>(initial),[ready,setReady]=useState(false),[openDay,setOpenDay]=useState(false),[tasks,setTasks]=useState<(boolean|null)[]>([null,null,null]),[result,setResult]=useState<"win"|"lose"|null>(null),[reward,setReward]=useState<string|null>(null),[spinning,setSpinning]=useState(false);
+  useEffect(()=>{const saved=localStorage.getItem("aventura21");if(saved)try{setGame(JSON.parse(saved))}catch{}setReady(true)},[]);
+  useEffect(()=>{if(ready)localStorage.setItem("aventura21",JSON.stringify(game))},[game,ready]);
+  const weekday=colombiaWeekday(), isSunday=weekday.toLowerCase().includes("domingo"),isSaturday=weekday.toLowerCase().includes("sábado");
+  const value=VALUES[(game.day-1)%VALUES.length], taskLabels=[isSaturday?"Terminar 1 taller":"Terminar 3 talleres","Lavar los platos","Lavarme los dientes después de cada comida"];
+  const avatar=AVATARS[game.avatar];
+  const completed=game.day-1;
+  const story=[
+    <><b>{game.name}, estás en una misión de 21 días.</b><br/>La superarás con valentía, fortaleza y amor.</>,
+    <>Cada día completarás tres pequeñas misiones.<br/>Los sábados tendrás solamente un taller.</>,
+    <>Los domingos son para descansar y compartir.<br/>No cuentan como día de la aventura.</>,
+    <>Si dejas una misión sin hacer, vuelves al día 1.<br/>¡Cada nuevo intento también te hace más fuerte!</>,
+    <>Gana una estrella por cada nivel superado.<br/>Cada 5 estrellas podrás girar la ruleta de premios.</>,
+  ];
+  function start(){if(!game.name.trim())return;setGame(g=>({...g,screen:"story",story:0,started:colombiaDate()}))}
+  function beginDay(){setTasks([null,null,null]);setResult(null);setOpenDay(true)}
+  function submit(){if(tasks.some(x=>x===null))return; if(tasks.every(Boolean)){sound("win");setResult("win")}else{sound("lose");setResult("lose")}}
+  function continueResult(){if(result==="lose"){setGame(g=>({...g,day:1,stars:0,started:colombiaDate()}));setOpenDay(false);return} if(game.day>=21){setGame(g=>({...g,day:22,stars:g.stars+1}));setOpenDay(false)}else{setGame(g=>({...g,day:g.day+1,stars:g.stars+1}));setOpenDay(false)}}
+  function spin(){setSpinning(true);sound("prize");setTimeout(()=>{const p=PRIZES[Math.floor(Math.random()*PRIZES.length)];setReward(p);setGame(g=>({...g,rewards:[...g.rewards,p]}));setSpinning(false)},1700)}
+  function reset(){if(confirm("¿Quieres borrar esta aventura y comenzar con un nuevo jugador?")){localStorage.removeItem("aventura21");setGame(initial)}}
+  if(!ready)return <main className="loading">✨</main>;
+  if(game.screen==="welcome")return <Welcome game={game} setGame={setGame} start={start}/>;
+  if(game.screen==="story")return <main className="story-screen"><div className="story-top"><span className="logo">✦ Aventura 21</span><span>{game.story+1} / {story.length}</span></div><section className="story-card"><div className={`big-avatar ${avatar.color}`}>{avatar.emoji}</div><p className="speech">{story[game.story]}</p><div className="dots">{story.map((_,i)=><i key={i} className={i===game.story?"active":""}/>)}</div><button className="primary" onClick={()=>game.story<story.length-1?setGame(g=>({...g,story:g.story+1})):setGame(g=>({...g,screen:"map"}))}>{game.story<story.length-1?"Continuar":"¡Iniciar la partida!"} →</button></section></main>;
+  const claimable=game.stars>0&&game.stars%5===0&&game.rewards.length<Math.floor(game.stars/5);
+  return <main className="game-shell">
+    <header><div className="logo">✦ Aventura 21</div><div className="status"><span>⭐ <b>{game.stars}</b></span><span className="player"><i>{avatar.emoji}</i>{game.name}</span><button className="gear" onClick={reset} aria-label="Reiniciar jugador">⚙</button></div></header>
+    <section className="hero-row"><div><p className="mini">DÍA {Math.min(game.day,21)} DE 21</p><h1>{game.day>21?"¡Misión cumplida!":`¡Hola, ${game.name}!`}</h1><p>{game.day>21?"Creaste un hábito maravilloso con paciencia, amor y constancia.":isSunday?"Hoy descansamos, compartimos y recargamos nuestros poderes.":"Tu compañero está listo. ¿Comenzamos la misión de hoy?"}</p></div><div className="hero-avatar"><span>{avatar.emoji}</span><div>{game.day>21?"¡Eres increíble! 🌟":isSunday?"¡Feliz domingo! ☀️":"¡Inicia la partida! 🚀"}</div></div></section>
+    <section className="value-card"><span>{value.icon}</span><div><small>VALOR DEL DÍA</small><h3>{value.name}</h3><p>{value.text}</p></div></section>
+    <section className="map-card"><div className="map-title"><div><small>TU CAMINO MÁGICO</small><h2>{completed} de 21 niveles completados</h2></div><b>{Math.round(Math.min(completed,21)/21*100)}%</b></div><div className="trail">{Array.from({length:21},(_,i)=>{const d=i+1,done=d<game.day,current=d===game.day&&game.day<=21;return <button key={d} disabled={!current||isSunday} className={`level ${done?"done":""} ${current?"current":"locked"}`} onClick={beginDay} aria-label={`Día ${d}${done?" completado":current?" disponible":" bloqueado"}`}><span>{done?"★":current?d:"🔒"}</span><small>{d}</small></button>})}</div>{game.day<=21&&<div className="map-action"><div><b>{isSunday?"Domingo de descanso":`Nivel ${game.day} listo`}</b><span>{isSunday?"Mañana continuamos la aventura.":isSaturday?"Hoy: 1 taller + 2 hábitos":"Hoy: 3 talleres + 2 hábitos"}</span></div><button className="primary" disabled={isSunday} onClick={beginDay}>{isSunday?"Descansar ☀️":"Jugar este nivel →"}</button></div>}</section>
+    <section className={`reward-card ${claimable?"ready":""}`}><div className="reward-icon">🎁</div><div><small>RULETA DE PREMIOS</small><h2>{claimable?"¡Tienes un premio!":"Tu próximo regalo"}</h2><p>{claimable?"Ganaste 5 estrellas consecutivas. ¡Gira la ruleta!":`${5-(game.stars%5||0)} estrellas más para desbloquear la ruleta.`}</p><div className="star-meter">{[1,2,3,4,5].map(n=><span key={n} className={n<=game.stars%5||claimable?"filled":""}>★</span>)}</div></div><button className="secondary" disabled={!claimable||spinning} onClick={spin}>{spinning?"Girando...":"Girar ruleta"}</button></section>
+    <footer>Hecho con 💛 para crecer con respeto, responsabilidad y proactividad.</footer>
+    {openDay&&<div className="modal-back"><section className="mission-modal">{!result?<><button className="close" onClick={()=>setOpenDay(false)}>×</button><div className="modal-avatar">{avatar.emoji}</div><small>MISIÓN DEL DÍA {game.day}</small><h2>Completa tus tres poderes</h2><p>Marca con sinceridad cómo te fue hoy.</p><div className="task-list">{taskLabels.map((label,i)=><div className="task" key={label}><b><span>{["📚","🍽️","🪥"][i]}</span>{label}</b><div><button className={tasks[i]===true?"yes active":"yes"} onClick={()=>setTasks(t=>t.map((x,j)=>j===i?true:x))}>✓ Lo hice</button><button className={tasks[i]===false?"no active":"no"} onClick={()=>setTasks(t=>t.map((x,j)=>j===i?false:x))}>× No lo hice</button></div></div>)}</div><button className="primary full" disabled={tasks.some(x=>x===null)} onClick={submit}>Terminar misión</button></>:<div className={`result ${result}`}><div className="result-emoji">{result==="win"?"🌟":"🌱"}</div><h2>{result==="win"?"¡Nivel superado!":"Hoy no pasamos el nivel"}</h2><p>{result==="win"?"La constancia convierte pequeños pasos en grandes poderes. ¡Ganaste una estrella!":"Decir la verdad también es valiente. Mañana no: puedes comenzar de nuevo desde el día 1 hoy mismo."}</p><button className="primary full" onClick={continueResult}>{result==="win"?(game.day===21?"Ver mi victoria":"Continuar al siguiente nivel"):"Volver al día 1"}</button></div>}</section></div>}
+    {(reward||spinning)&&<div className="modal-back"><section className="prize-modal"><div className={`wheel ${spinning?"spin":""}`}>🍦<span>🎬</span><i>🌳</i><b>🏊</b><em>🛼</em></div>{!spinning&&reward&&<><small>¡TU PREMIO ES!</small><h2>{reward}</h2><p>Disfrútalo con alegría. Te lo ganaste con tu constancia.</p><button className="primary" onClick={()=>setReward(null)}>¡Qué emoción!</button></>}</section></div>}
+  </main>
+}
+
+function Welcome({game,setGame,start}:{game:Game;setGame:React.Dispatch<React.SetStateAction<Game>>;start:()=>void}){return <main className="welcome-shell"><div className="sun-orb"/><span className="cloud cloud-a"/><span className="cloud cloud-b"/><section className="welcome-card"><div className="brand-pill"><span>✦</span> Aventura 21</div><p className="eyebrow">TU MISIÓN COMIENZA AQUÍ</p><h1>Pequeños hábitos,<br/><em>grandes poderes</em></h1><p className="intro">Completa tus misiones diarias, colecciona estrellas<br/>y descubre todo lo valiente que puedes ser.</p><div className="name-field"><label htmlFor="player-name">¿Cómo te llamas?</label><input id="player-name" value={game.name} onChange={e=>setGame(g=>({...g,name:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&start()} placeholder="Escribe tu nombre" maxLength={18}/></div><fieldset className="avatar-field"><legend>Escoge a tu compañero de aventura</legend><div className="avatar-row">{(Object.entries(AVATARS) as [AvatarId,typeof AVATARS[AvatarId]][]).map(([id,a])=><button key={id} type="button" className={`avatar-option ${a.color} ${game.avatar===id?"selected":""}`} onClick={()=>setGame(g=>({...g,avatar:id}))} aria-pressed={game.avatar===id}><span className="avatar-face">{a.emoji}</span><strong>{a.name}</strong>{game.avatar===id&&<span className="check">✓</span>}</button>)}</div></fieldset><button className="start-button" type="button" disabled={!game.name.trim()} onClick={start}>¡Comenzar mi aventura! <span>→</span></button><p className="helper"><span>★</span> 21 días para crear un hábito maravilloso <span>★</span></p></section><div className="hill hill-left"/><div className="hill hill-right"/></main>}
